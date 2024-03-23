@@ -18,6 +18,7 @@
 
 package dev.romainguy.kotlin.explorer
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -53,9 +54,6 @@ import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
-import org.jetbrains.jewel.window.DecoratedWindow
-import org.jetbrains.jewel.window.TitleBar
-import org.jetbrains.jewel.window.newFullscreenControls
 import org.jetbrains.jewel.window.styling.TitleBarStyle
 import java.awt.event.FocusEvent
 import java.awt.event.FocusListener
@@ -66,7 +64,8 @@ import javax.swing.event.DocumentListener
 
 @Composable
 private fun FrameWindowScope.KotlinExplorer(
-    explorerState: ExplorerState
+    explorerState: ExplorerState,
+    onNavigateToSettings: () -> Unit,
 ) {
     var sourceTextArea by remember { mutableStateOf<RSyntaxTextArea?>(null) }
     var dexTextArea by remember { mutableStateOf<RSyntaxTextArea?>(null) }
@@ -118,7 +117,8 @@ private fun FrameWindowScope.KotlinExplorer(
         { dex -> dexTextArea!!.text = dex },
         { oat -> oatTextArea!!.text = oat },
         { statusUpdate -> status = statusUpdate },
-        { findDialog.isVisible = true }
+        { findDialog.isVisible = true },
+        onNavigateToSettings,
     )
 
     Column(
@@ -214,7 +214,8 @@ private fun FrameWindowScope.MainMenu(
     onDexUpdate: (String) -> Unit,
     onOatUpdate: (String) -> Unit,
     onStatusUpdate: (String) -> Unit,
-    onSearchClicked: () -> Unit
+    onSearchClicked: () -> Unit,
+    onNavigateToSettings: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -245,6 +246,10 @@ private fun FrameWindowScope.MainMenu(
             )
         }
         Menu("Options") {
+            Item(
+                text = "Settings",
+                onClick = onNavigateToSettings,
+            )
             CheckboxItem(
                 "Optimize with R8",
                 explorerState.optimize,
@@ -299,7 +304,8 @@ private fun ValidIcon() {
 
 @Composable
 private fun Settings(
-    explorerState: ExplorerState
+    explorerState: ExplorerState,
+    onNavigateToMainUi: () -> Unit
 ) {
     var androidHome by remember { mutableStateOf(explorerState.toolPaths.androidHome.toString()) }
     var kotlinHome by remember { mutableStateOf(explorerState.toolPaths.kotlinHome.toString()) }
@@ -349,6 +355,7 @@ private fun Settings(
                     explorerState.settings.entries["ANDROID_HOME"] = androidHome
                     explorerState.settings.entries["KOTLIN_HOME"] = kotlinHome
                     explorerState.reloadToolPathsFromSettings()
+                    if (explorerState.toolPaths.isValid) onNavigateToMainUi()
                 }
             ) {
                 Text("Save")
@@ -373,12 +380,16 @@ fun main() = application {
         TitleBarStyle.light()
     }
 
+    var isSettingsVisible by remember { mutableStateOf(false) }
+
     IntUiTheme(
         themeDefinition,
         ComponentStyling.decoratedWindow(titleBarStyle = titleBarStyle),
         false
     ) {
-        DecoratedWindow(
+        // DecoratedWindow does not update content when I change the targetState of Crossfade
+//        DecoratedWindow(
+        Window(
             state = rememberWindowState(
                 position = WindowPosition.Aligned(Alignment.Center),
                 width = 1900.dp,
@@ -387,13 +398,24 @@ fun main() = application {
             onCloseRequest = ::exitApplication,
             title = "Kotlin Explorer"
         ) {
-            TitleBar(Modifier.newFullscreenControls()) {
-                Text("Kotlin Explorer")
-            }
-            if (explorerState.toolPaths.isValid) {
-                KotlinExplorer(explorerState)
-            } else {
-                Settings(explorerState)
+//            TitleBar(Modifier.newFullscreenControls()) {
+//                Text("Kotlin Explorer")
+//            }
+            Crossfade(targetState = isSettingsVisible || explorerState.toolPaths.isValid.not()) { showSettings ->
+                LaunchedEffect(showSettings) {
+                    println(showSettings)
+                }
+                if (showSettings) {
+                    Settings(
+                        explorerState = explorerState,
+                        onNavigateToMainUi = { isSettingsVisible = false }
+                    )
+                } else {
+                    KotlinExplorer(
+                        explorerState = explorerState,
+                        onNavigateToSettings = { isSettingsVisible = true },
+                    )
+                }
             }
         }
     }
